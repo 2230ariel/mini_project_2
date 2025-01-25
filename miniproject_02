@@ -1,0 +1,80 @@
+import matplotlib
+matplotlib.use('Agg')  # Set non-interactive backend before importing pyplot
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+def calc_mean_erp(trial_points, ecog_data):
+    # Import trial points data with specific formatting
+    trials_df = pd.read_csv(trial_points, header=None, dtype=np.float64)
+    # Convert to int after loading as float (since the values are large)
+    trials_df = trials_df.astype(int)
+    
+    # Import brain data - scientific notation format
+    ecog_signal = pd.read_csv(ecog_data, header=None, dtype=np.float64)
+    ecog_signal = ecog_signal.iloc[:, 0].to_numpy()  # Take first column
+    
+    # Initialize output matrix (5 fingers × 1201 timepoints)
+    fingers_erp_mean = np.zeros((5, 1201))
+    
+    # Process each finger (1-5)
+    for finger in range(1, 6):
+        # Get all trials for current finger
+        finger_trials = trials_df[trials_df.iloc[:, 2] == finger]  # Third column contains finger number
+        start_points = finger_trials.iloc[:, 0]  # First column contains start points
+        
+        # Initialize array to store all trials for current finger
+        all_trials = np.zeros((len(start_points), 1201))
+        valid_trial_count = 0
+        
+        # Extract signal for each trial
+        for i, start in enumerate(start_points):
+            # Define time window (-200 to +1000 ms)
+            window_start = start - 200
+            window_end = start + 1001
+            
+            # Extract signal for this trial if within valid range
+            if window_start >= 0 and window_end <= len(ecog_signal):
+                all_trials[valid_trial_count, :] = ecog_signal[window_start:window_end]
+                valid_trial_count += 1
+        
+        # Trim array to only include valid trials
+        all_trials = all_trials[:valid_trial_count, :]
+        
+        # Calculate mean across all valid trials for this finger
+        if valid_trial_count > 0:
+            fingers_erp_mean[finger-1, :] = np.mean(all_trials, axis=0)
+    
+    # Plot results and save to file
+    plt.figure(figsize=(12, 8))
+    time_axis = np.arange(-200, 1001)
+    for finger in range(5):
+        plt.plot(time_axis, fingers_erp_mean[finger, :], 
+                label=f'Finger {finger+1}')
+    
+    plt.xlabel('Time (ms)')
+    plt.ylabel('Signal Amplitude')
+    plt.title('Average Brain Response by Finger')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig('brain_response_plot.png', dpi=300, bbox_inches='tight')
+    plt.close()  # Close the plot to free memory
+    
+    # Print the matrix
+    print("Fingers ERP Mean Matrix (5x1201):")
+    np.set_printoptions(precision=6, suppress=True, threshold=np.inf)
+    print(fingers_erp_mean)
+    
+    return fingers_erp_mean
+
+def main():
+    # Example usage
+    fingers_erp_mean = calc_mean_erp('events_file_ordered.csv', 'brain_data_channel_one.csv')
+    
+    # Save the matrix to CSV
+    df = pd.DataFrame(fingers_erp_mean)
+    df.to_csv('formatted_output.csv', float_format='%.6f', index=False)
+
+if __name__ == "__main__":
+    main()
